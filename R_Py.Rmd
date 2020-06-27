@@ -1,0 +1,50 @@
+---
+title: "Untitled"
+author: "Devarshi Pancholi"
+date: "3/7/2020"
+output: html_document
+---
+
+```{r}
+
+library(reticulate)
+#Users/devarshipancholi/Library/r-miniconda
+use_python("/Users/devarshipancholi/Desktop/miniconda3/bin/python")
+#use_miniconda("r-reticulate")
+repl_python()
+
+```
+
+```{python}
+
+import nltk
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+nltk.downloader.download('vader_lexicon')
+
+def analyze_sentiment(train):
+  sentiments = []
+sid = SentimentIntensityAnalyzer()
+for i in range(train.shape[0]):
+  line = train['Title'].iloc[i]
+sentiment = sid.polarity_scores(line)
+sentiments.append([sentiment['neg'], sentiment['pos'],
+                   sentiment['neu'], sentiment['compound']])
+train[['neg', 'pos', 'neu', 'compound']] = pd.DataFrame(sentiments)
+return train   
+
+train = analyze_sentiment(train)
+
+def analyze_sentiment(train):
+    sentiments = []
+    sid = SentimentIntensityAnalyzer()
+    for i in range(train.shape[0]):
+        line = train['Headline'].iloc[i]
+        sentiment = sid.polarity_scores(line)
+        sentiments.append([sentiment['neg'], sentiment['pos'],
+                           sentiment['neu'], sentiment['compound']])
+    train[['negH', 'posH', 'neuH', 'compoundH']] = pd.DataFrame(sentiments)
+    return train   
+  
+train = analyze_sentiment(train)
+
+```

@@ -1,0 +1,298 @@
+Here I have tried to predict how popular the online article is going to be based on two scores associated: “SentimentTitle” and “SentimemtHeadline”.
+
+
+library(readr)
+library(dplyr)
+library(tm)
+library(quanteda)
+library(dplyr)
+library(magrittr)
+library(stringr)
+library(NLP)
+library(SentimentAnalysis)
+library(sentimentr)
+library(superml)
+library(stats)
+library(standardize)
+library(scales)
+library(Matrix)
+library(MLmetrics)
+library(lightgbm)
+library(gdata)
+
+#loading the necessary libraries and datasets into the enviorment
+
+train.df <-read.csv("/Users/devarshipancholi/Desktop/dataset/train_file.csv",
+                    header=TRUE, stringsAsFactors=FALSE)
+test.df <- read.csv("/Users/devarshipancholi/Desktop/dataset/test_file.csv",
+                    header=TRUE, stringsAsFactors=FALSE)
+dim(train.df)
+dim(test.df)
+
+#-----------DATA PREPROCESSING----------------------------------------------
+
+train.df[is.na(train.df)] <- " "
+test.df[is.na(test.df)] <- " "
+
+colSums(is.na(train.df))
+colSums(is.na(test.df))
+
+train.df$PublishDate <- as.Date(train.df$PublishDate)
+train.df[order(as.Date(train.df$PublishDate)),]
+
+train.df$SentimentTitle <- NULL
+train.df$SentimentHeadline <- NULL
+
+head(train.df,2)
+
+#Binding train and test together for more accurate text analysis
+
+train <- rbind(train.df,test.df)
+str(train)
+train[is.na(train)] <- " "
+colSums(is.na(train))
+
+unique(train$Topic)
+
+str_replace(train$Title, "n\'t", " not")
+str_replace(train$Title, "\'t", " not")
+str_replace(train$Title, "\'re", " are")
+str_replace(train$Title, "\'s", " is")
+str_replace(train$Title, "\'d", " would")
+str_replace(train$Title, "\'ll", " will")
+str_replace(train$Title, "\'ve", " have")
+str_replace(train$Title, "\'m", " am")
+
+str_replace(train$Headline, "n\'t", " not")
+str_replace(train$Headline, "\'t", " not")
+str_replace(train$Headline, "\'re", " are")
+str_replace(train$Headline, "\'s", " is")
+str_replace(train$Headline, "\'d", " would")
+str_replace(train$Headline, "\'ll", " will")
+str_replace(train$Headline, "\'ve", " have")
+str_replace(train$Headline, "\'m", " am")
+
+stop_words <- stopwords("SMART")
+stop_words <- c(stop_words, 'i', 'me', 'my', 'myself', 'we', 'our', 'ours', 'ourselves', 'you', "you're", "you've",
+            "you'll", "you'd", 'your', 'yours', 'yourself', 'yourselves', 'he', 'him', 'his', 'himself',
+            'she', "she's", 'her', 'hers', 'herself', 'it', "it's", 'its', 'itself', 'they', 'them', 'their',
+            'theirs', 'themselves', 'what', 'which', 'who', 'whom', 'this', 'that', "that'll", 'these', 'those', 
+            'am', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'having', 'do', 'does', 
+            'did', 'doing', 'a', 'an', 'the', 'and', 'but', 'if', 'or', 'because', 'as', 'until', 'while', 'of', 
+            'at', 'by', 'for', 'with', 'about', 'against', 'between', 'into', 'through', 'during', 'before', 'after',
+            'above', 'below', 'to', 'from', 'up', 'down', 'in', 'out', 'on', 'off', 'over', 'under', 'again', 'further',
+            'then', 'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all', 'any', 'both', 'each', 'few', 'more',
+            'most', 'other', 'some', 'such', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 
+            's', 't', 'can', 'will', 'just', 'don', "don't", 'should', "should've", 'now', 'd', 'll', 'm', 'o', 're', 
+            've', 'y', 'ain', 'aren', "aren't", 'couldn', "couldn't", 'didn', "didn't", 'doesn', "doesn't", 'hadn',
+            "hadn't", 'hasn', "hasn't", 'haven', "haven't", 'isn', "isn't", 'ma', 'mightn', "mightn't", 'mustn',
+            "mustn't", 'needn', "needn't", 'shan', "shan't", 'shouldn', "shouldn't", 'wasn', "wasn't", 'weren', "weren't", 
+            'won', "won't", 'wouldn', "wouldn't")
+stop_words <- tolower(stop_words)
+
+train$Title <- gsub("'", "", train$Title) # remove apostrophes
+train$Title <- gsub("[[:punct:]]", " ", train$Title)  # replace punctuation with space
+train$Title <- gsub("[[:cntrl:]]", " ", train$Title)  # replace control characters with space
+train$Title <- gsub("^[[:space:]]+", "", train$Title) # remove whitespace at beginning of documents
+train$Title <- gsub("[[:space:]]+$", "", train$Title) # remove whitespace at end of documents
+train$Title <- gsub("[^a-zA-Z -]", " ", train$Title) # allows only letters
+train$Title <- tolower(train$Title)  # force to lowercase
+
+train$Headline <- gsub("'", "", train$Headline) # remove apostrophes
+train$Headline <- gsub("[[:punct:]]", " ", train$Headline)  # replace punctuation with space
+train$Headline <- gsub("[[:cntrl:]]", " ", train$Headline)  # replace control characters with space
+train$Headline <- gsub("^[[:space:]]+", "", train$Headline) # remove whitespace at beginning of documents
+train$Headline <- gsub("[[:space:]]+$", "", train$Headline) # remove whitespace at end of documents
+train$Headline <- gsub("[^a-zA-Z -]", " ", train$Headline) # allows only letters
+train$Headline <- tolower(train$Headline)  # force to lowercase
+
+train$Source <- gsub("'", "", train$Source) # remove apostrophes
+train$Source <- gsub("[[:punct:]]", " ", train$Source)  # replace punctuation with space
+train$Source <- gsub("[[:cntrl:]]", " ", train$Source)  # replace control characters with space
+train$Source <- gsub("^[[:space:]]+", "", train$Source) # remove whitespace at beginning of documents
+train$Source <- gsub("[[:space:]]+$", "", train$Source) # remove whitespace at end of documents
+train$Source <- gsub("[^a-zA-Z -]", " ", train$Source) # allows only letters
+train$Source <- tolower(train$Source)  # force to lowercase
+
+head(train,5)
+
+#Counting the number of words for both title and head
+
+train$count_title <- sapply(train$Title, function(x) 
+  length(unlist(strsplit(as.character(x), "\\W+"))))
+
+train$count_headline <- sapply(train$Headline, function(x) 
+  length(unlist(strsplit(as.character(x), "\\W+"))))
+
+#SCORING THE SENTIMENTS GENERATED 
+
+train$score_title <- sentiment_by(train$Title)
+train$score_headline <- sentiment_by(train$Headline)
+
+dim(train)
+names(train)
+
+head(train,5)
+
+#cleaning the data from matrix format to dataframe format
+
+train$score_title.element_id <-NULL
+train$score_title.word_count <-NULL
+train$score_title.sd <- NULL
+train$score_title.ave_sentiment <- train$title_score
+
+train$score_headline.element_id <-NULL
+train$score_headline.word_count <- NULL
+train$score_headline.sd <- NULL
+train$score_headline.ave_sentiment <- train$headline_score
+
+trained <- as.data.frame(train)
+trained[is.na(trained)] <- " "
+
+#Splitting into test and train datasets which were provided originally
+
+trainf.df <- trained[1:55932,]
+testf.df <-  trained[55933:93220,]
+
+#Creating Bag Of Words abnd Document Term Matrixes 
+
+cv_bow <- CountVectorizer$new(min_df = 0.3, max_features = 4500)
+cv_bow$fit(trainf.df$Title)
+matrix_train1 <- cv_bow$transform(trainf.df$Title)
+matrix_test1 <- cv_bow$transform(test.df$Title)
+dim(matrix_train1)
+dim(matrix_test1)
+
+cv_bow <- CountVectorizer$new(min_df = 0.3, max_features = 5000)
+cv_bow$fit(trainf.df$Headline)
+matrix_train2 <- cv_bow$transform(trainf.df$Headline)
+matrix_test2 <- cv_bow$transform(test.df$Headline)
+dim(matrix_train2)
+dim(matrix_test2)
+
+cv_bow <- CountVectorizer$new(min_df = 0.3, max_features = 1000)
+cv_bow$fit(trainf.df$Source)
+matrix_train3 <- cv_bow$transform(trainf.df$Source)
+matrix_test3 <- cv_bow$transform(test.df$Source)
+dim(matrix_train3)
+dim(matrix_test3)
+
+cv_bow <- CountVectorizer$new(min_df = 0.3, max_features = 1000)
+cv_bow$fit(trainf.df$Topic)
+matrix_train4 <- cv_bow$transform(trainf.df$Topic)
+matrix_test4 <- cv_bow$transform(test.df$Topic)
+dim(matrix_train4)
+dim(matrix_test4)
+
+#Standardizing and Scaling all the numerical fields for modelling
+
+standardize(trainf.df$title_score, centerFun = mean, scaleFun = sd)
+scale(trainf.df$title_score)
+train_title_score_matrix <- as.matrix(rescale(trainf.df$title_score, to = c(-1, 1))) 
+
+standardize(test.df$title_score, centerFun = mean, scaleFun = sd)
+scale(testf.df$title_score)
+test_title_score_matrix <- as.matrix(rescale(test.df$title_score, to = c(-1, 1)))
+
+standardize(trainf.df$headline_score, centerFun = mean, scaleFun = sd)
+scale(trainf.df$headline_score)
+train_headline_score_matrix <- as.matrix(rescale(trainf.df$headline_score, to = c(-1, 1)))
+
+standardize(testf.df$headline_score, centerFun = mean, scaleFun = sd)
+scale(testf.df$headline_score)
+test_headline_score_matrix <- as.matrix(rescale(testf.df$headline_score, to = c(-1, 1))) 
+
+standardize(trainf.df$count_title, centerFun = mean, scaleFun = sd)
+scale(trainf.df$count_title)
+train_count_title_matrix <- as.matrix(rescale(trainf.df$count_title, to = c(-1, 1)))
+
+standardize(testf.df$count_title, centerFun = mean, scaleFun = sd)
+scale(testf.df$count_title)
+test_count_title_matrix <- as.matrix(rescale(testf.df$count_title, to = c(-1, 1))) 
+
+standardize(trainf.df$count_headline, centerFun = mean, scaleFun = sd)
+scale(trainf.df$count_headline)
+train_count_headline_matrix <- as.matrix(rescale(trainf.df$count_headline, to = c(-1, 1))) 
+
+standardize(testf.df$count_headline, centerFun = mean, scaleFun = sd)
+scale(testf.df$count_headline)
+test_count_headline_matrix <- as.matrix(rescale(testf.df$count_headline, to = c(-1, 1))) 
+
+standardize(trainf.df$Facebook, centerFun = mean, scaleFun = sd)
+scale(trainf.df$Facebook)
+train_facebook_matrix <- as.matrix(rescale(trainf.df$Facebook, to = c(-1, 1)))
+
+standardize(testf.df$Facebook, centerFun = mean, scaleFun = sd)
+scale(testf.df$Facebook)
+test_facebook_matrix <- as.matrix(rescale(testf.df$Facebook, to = c(-1, 1)))
+
+standardize(trainf.df$GooglePlus, centerFun = mean, scaleFun = sd)
+scale(trainf.df$GooglePlus)
+train_google_matrix <- as.matrix(rescale(trainf.df$GooglePlus, to = c(-1, 1))) 
+
+standardize(testf.df$GooglePlus, centerFun = mean, scaleFun = sd)
+scale(testf.df$GooglePlus)
+test_google_matrix <- as.matrix(rescale(testf.df$GooglePlus, to = c(-1, 1)))
+
+standardize(trainf.df$LinkedIn, centerFun = mean, scaleFun = sd)
+scale(trainf.df$LinkedIn)
+train_linkedin_matrix <- as.matrix(rescale(trainf.df$LinkedIn, to = c(-1, 1)))
+
+standardize(testf.df$LinkedIn, centerFun = mean, scaleFun = sd)
+scale(testf.df$LinkedIn)
+test_linkedin_matrix <- as.matrix(rescale(testf.df$LinkedIn, to = c(-1, 1)))
+
+#-----------------------------MODELLING------------------------------------ 
+#light GBM model
+
+title_train_sparse <- cbindX(matrix_train1, matrix_train3, matrix_train4, train_title_score_matrix,
+                             train_count_title_matrix, train_facebook_matrix, train_google_matrix, 
+                             train_linkedin_matrix) 
+
+title_test_sparse  <- cbindX(matrix_train1, matrix_train3, matrix_train4, test_title_score_matrix,
+                             test_count_title_matrix,test_facebook_matrix, test_google_matrix, 
+                             test_linkedin_matrix) 
+
+headline_train_sparse <- cbindX(matrix_train2, matrix_train3, matrix_train4, train_headline_score_matrix,
+                                train_count_headline_matrix, train_facebook_matrix, train_google_matrix, 
+                                train_linkedin_matrix) 
+
+headline_test_sparse <- cbindX(matrix_train2, matrix_train3, matrix_train4, train_headline_score_matrix, 
+                               train_count_headline_matrix, train_facebook_matrix, train_google_matrix, 
+                               train_linkedin_matrix) 
+
+lgb.grid <- list(objective = "regression_l1",
+                metric = "mae",
+                min_data = 10,
+                max_depth = 13,
+                num_leaves = 20,
+                learning_rate = 0.2,
+                n_estimators = 2000)
+
+title_model <- lgb.train(params = lgb.grid, data = title_train_sparse, learning_rate = 0.02,
+                      num_leaves = 25, num_threads = 2 , nrounds = best.iter,
+                      eval_freq = 20, eval = lgb.normalizedgini,
+                      categorical_feature = categoricals.vec)
+
+title_pred <- predict(title_model, title_test_sparse)
+
+
+headline_model <- lgb.train(params = lgb.grid, data = headline_train_sparse, learning_rate = 0.02,
+                        num_leaves = 25, num_threads = 2 , nrounds = best.iter,
+                        eval_freq = 20, eval = lgb.normalizedgini,
+                        categorical_feature = categoricals.vec)
+
+headline_pred <- predict(headline_model, headline_test_sparse)
+
+final_submit <- data.frame("IDLink" = testf.df$IDLink, "SentimentTitle" = title_pred, 
+                           "SentimentHeadline" = headline_pred)
+write.csv(final_submit, "/Users/devarshipancholi/Desktop/dataset/final_submit.csv")
+
+
+
+
+
+
+
+Sentiment/Text Analysis Using R-Script.
+
