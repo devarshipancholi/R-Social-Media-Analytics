@@ -1,4 +1,4 @@
-# Social-Media-Analytics-R-Python-
+# R-Social-Media-Analytics-
 Calculated a Sentiment Score for each news title and the body of the news across different social media platforms like Facebook, LinkedIn and Google Plus.
 The scores were calculated in the range -1 to 1.
 Historic data for about 500,000 news articles and their sentiment scores acorss three different social media platforms (Facebook, LinkedIn and Google Plus) were provided.
